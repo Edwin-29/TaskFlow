@@ -52,13 +52,20 @@ import androidx.compose.ui.unit.sp
 import com.equipo2.taskflow.ui.theme.TaskFlowTheme
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import androidx.compose.foundation.background
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
+import androidx.compose.ui.res.painterResource
 
 // ==========================================
-// MOCK API: Modelo de Datos de Blackboard
+// MOCK API: Modelo de Datos de AcademicTask
 // ==========================================
-data class BlackboardTask(
+data class AcademicTask(
     val id: String,
-    val courseName: String,
+    val category: String, // Ej: "Simulacro", "Colegio", "Academia"
     val taskDescription: String,
     val dueDate: String,
     val isOverdue: Boolean,
@@ -77,8 +84,8 @@ class MainActivity : ComponentActivity() {
                 var selectedTaskId by remember { mutableStateOf("") }
                 var isNetworkLoading by remember { mutableStateOf(false) }
 
-                // 2. Nuestra "Base de datos" local simulada (Mock API)
-                var tasksList by remember { mutableStateOf(listOf<BlackboardTask>()) }
+                // 2. Nuestra "Base de datos" local simulada (Mock API) actualizada
+                var tasksList by remember { mutableStateOf(listOf<AcademicTask>()) }
 
                 // 3. Herramientas para animaciones de carga y mensajes flotantes (Snackbar)
                 val coroutineScope = rememberCoroutineScope()
@@ -86,33 +93,55 @@ class MainActivity : ComponentActivity() {
 
                 Scaffold(
                     modifier = Modifier.fillMaxSize(),
-                    snackbarHost = { SnackbarHost(snackbarHostState) } // <-- Agregado para alertas
+                    snackbarHost = { SnackbarHost(snackbarHostState) }
                 ) { innerPadding ->
                     when (currentScreen) {
                         "login" -> {
                             LoginScreen(
                                 modifier = Modifier.padding(innerPadding),
                                 onLoginSuccess = {
-                                    // Simular petición HTTP al servidor al iniciar sesión
                                     coroutineScope.launch {
                                         isNetworkLoading = true
-                                        delay(1500) // Simula 1.5 segundos de internet
+                                        delay(1500)
+                                        // Lista adaptada al nuevo público objetivo
                                         tasksList = listOf(
-                                            BlackboardTask("1", "COMPUTACIÓN III-148T1", "Cuestionario CAS Intro to Cybersecurity", "Hoy, 23:59", true),
-                                            BlackboardTask("2", "SISTEMAS INTELIGENTES-C1T1", "Actividades No Lectivas", "Mañana, 23:59", false, true),
-                                            BlackboardTask("3", "CALIDAD DE SOFTWARE-C1T1", "Informe de Proyecto", "15 Nov, 23:59", false)
+                                            AcademicTask(id = "1", category = "Simulacro tipo Admisión", taskDescription = "Examen General de Ciencias", dueDate = "Hoy, 23:59", isOverdue = true),
+                                            AcademicTask(id = "2", category = "Seminario de Letras", taskDescription = "Repaso de Habilidad Verbal", dueDate = "Mañana, 23:59", isOverdue = false, isUrgent = true),
+                                            AcademicTask(id = "3", category = "Colegio - Matemáticas", taskDescription = "Práctica de Trigonometría", dueDate = "15 Nov, 23:59", isOverdue = false)
                                         )
                                         isNetworkLoading = false
                                         currentScreen = "dashboard"
                                     }
+                                },
+                                onNavigateToRegister = { currentScreen = "register" },
+                                onForgotPassword = { currentScreen = "forgotPassword" }
+                            )
+                        }
+                        "register" -> {
+                            RegisterScreen(
+                                modifier = Modifier.padding(innerPadding),
+                                onBackToLogin = { currentScreen = "login" },
+                                onRegisterSuccess = {
+                                    coroutineScope.launch { snackbarHostState.showSnackbar("Cuenta creada con éxito") }
+                                    currentScreen = "login"
+                                }
+                            )
+                        }
+                        "forgotPassword" -> {
+                            ForgotPasswordScreen(
+                                modifier = Modifier.padding(innerPadding),
+                                onBackToLogin = { currentScreen = "login" },
+                                onSendResetLink = { email ->
+                                    coroutineScope.launch { snackbarHostState.showSnackbar("Enlace enviado a $email") }
+                                    currentScreen = "login"
                                 }
                             )
                         }
                         "dashboard" -> {
                             DashboardScreen(
                                 modifier = Modifier.padding(innerPadding),
-                                tasks = tasksList, // Le pasamos las tareas simuladas
-                                isLoading = isNetworkLoading, // Le pasamos el estado de carga
+                                tasks = tasksList,
+                                isLoading = isNetworkLoading,
                                 onTaskClick = { taskId ->
                                     selectedTaskId = taskId
                                     currentScreen = "detail"
@@ -124,21 +153,19 @@ class MainActivity : ComponentActivity() {
                             if (taskDetails != null) {
                                 TaskDetailScreen(
                                     modifier = Modifier.padding(innerPadding),
-                                    task = taskDetails, // Pasamos el objeto tarea completo
+                                    task = taskDetails,
                                     onBackClick = { currentScreen = "dashboard" },
                                     onSubmitTask = {
-                                        // Simular subida de archivo al servidor
                                         coroutineScope.launch {
-                                            delay(1500) // Simula 1.5 segundos subiendo el archivo
+                                            delay(1500)
                                             tasksList = tasksList.map {
                                                 if (it.id == selectedTaskId) it.copy(status = "Entregado") else it
                                             }
-                                            currentScreen = "dashboard" // Vuelve al inicio tras entregar
+                                            currentScreen = "dashboard"
                                             snackbarHostState.showSnackbar("¡Tarea enviada con éxito!")
                                         }
                                     },
                                     showError = { mensaje ->
-                                        // Muestra el error (ej: si no hay archivo adjunto)
                                         coroutineScope.launch { snackbarHostState.showSnackbar(mensaje) }
                                     }
                                 )
@@ -152,126 +179,343 @@ class MainActivity : ComponentActivity() {
 }
 
 // ==========================================
-// BLOQUE 2: Pantalla de Login (Validación de Seguridad)
+// BLOQUE 2: Sistema de Autenticación Preuniversitario (Login, Registro, Recuperación)
 // ==========================================
 @Composable
-fun LoginScreen(modifier: Modifier = Modifier, onLoginSuccess: () -> Unit) {
-    var username by remember { mutableStateOf("") }
+fun LoginScreen(
+    modifier: Modifier = Modifier,
+    onLoginSuccess: () -> Unit,
+    onNavigateToRegister: () -> Unit,
+    onForgotPassword: () -> Unit
+) {
+    var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var passwordVisible by remember { mutableStateOf(false) }
-
-    // Estados para validación
-    var usernameError by remember { mutableStateOf(false) }
-    var passwordError by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf("") }
 
-    // Función de validación (Estándares de seguridad básica)
     fun validateAndLogin() {
-        val emailPattern = "^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}\$".toRegex()
-        val passwordPattern = "^(?=.*[A-Za-z])(?=.*\\d)[A-Za-z\\d@$!%*?&]{8,}\$".toRegex()
+        val allowedDomains = listOf("@gmail.com", "@outlook.com", "@hotmail.com")
+        val isValidDomain = allowedDomains.any { email.trim().endsWith(it, ignoreCase = true) }
 
-        usernameError = !username.matches(emailPattern)
-        passwordError = !password.matches(passwordPattern)
-
-        if (usernameError) {
-            errorMessage = "Ingrese un formato de correo válido (ej. usuario@ucv.edu.pe)"
+        if (!isValidDomain) {
+            errorMessage = "Solo permitimos correos de Gmail, Outlook o Hotmail"
             return
         }
-        if (passwordError) {
-            errorMessage = "La contraseña debe tener mín. 8 caracteres, letras y números"
+        if (password.length < 8) {
+            errorMessage = "La contraseña requiere mínimo 8 caracteres"
             return
         }
-
+        // Nota: La conexión real a Firebase se implementará aquí para rechazar correos no registrados
         errorMessage = ""
-        // Aquí se ejecutará la petición REST a Blackboard para obtener el Token
         onLoginSuccess()
+    }
+
+    Column(
+        modifier = modifier.fillMaxSize().padding(32.dp).background(Color(0xFFF8F9FA)),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(text = "TaskFlow", style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.ExtraBold, color = Color(0xFF3949AB))
+        Text(text = "Tu Organizador Preuniversitario", style = MaterialTheme.typography.bodyMedium, color = Color.Gray)
+        Spacer(modifier = Modifier.height(48.dp))
+
+        OutlinedTextField(
+            value = email,
+            onValueChange = { email = it; errorMessage = "" },
+            label = { Text("Correo Electrónico") },
+            placeholder = { Text("ejemplo@gmail.com") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(16.dp),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = Color(0xFF3949AB),
+                unfocusedBorderColor = Color(0xFFE0E0E0)
+            )
+        )
+        Spacer(modifier = Modifier.height(16.dp))
+        OutlinedTextField(
+            value = password,
+            onValueChange = { password = it; errorMessage = "" },
+            label = { Text("Contraseña") },
+            visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+            trailingIcon = {
+                Text(
+                    text = if (passwordVisible) "🙈" else "👁️",
+                    modifier = Modifier.clickable { passwordVisible = !passwordVisible }.padding(8.dp)
+                )
+            },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(16.dp)
+        )
+
+        if (errorMessage.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(text = errorMessage, color = Color(0xFFFF5252), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            text = "¿Olvidaste tu contraseña?",
+            color = Color(0xFF3949AB),
+            style = MaterialTheme.typography.labelLarge,
+            modifier = Modifier.align(Alignment.End).clickable { onForgotPassword() }.padding(vertical = 8.dp)
+        )
+        Spacer(modifier = Modifier.height(24.dp))
+
+        Button(
+            onClick = { validateAndLogin() },
+            modifier = Modifier.fillMaxWidth().height(56.dp),
+            shape = RoundedCornerShape(16.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF26A69A))
+        ) {
+            Text("Iniciar Sesión", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+        }
+        Spacer(modifier = Modifier.height(16.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(text = "¿No tienes cuenta? ", color = Color.Gray)
+            Text(
+                text = "Regístrate aquí",
+                color = Color(0xFF3949AB),
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.clickable { onNavigateToRegister() }
+            )
+        }
+    }
+}
+
+@Composable
+fun RegisterScreen(modifier: Modifier = Modifier, onBackToLogin: () -> Unit, onRegisterSuccess: () -> Unit) {
+    val scrollState = rememberScrollState()
+
+    // Datos personales
+    var nombres by remember { mutableStateOf("") }
+    var apellidos by remember { mutableStateOf("") }
+
+    // Selector de Nivel
+    var expandedLevel by remember { mutableStateOf(false) }
+    var selectedLevel by remember { mutableStateOf("") }
+    val nivelesAcademia = listOf("Ciclo Anual", "Ciclo Semestral", "Ciclo Repaso", "Ciclo Verano")
+
+    // Credenciales
+    var email by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    var passwordVisible by remember { mutableStateOf(false) }
+    var errorMessage by remember { mutableStateOf("") }
+
+    val hasUppercase = password.any { it.isUpperCase() }
+    val hasNumber = password.any { it.isDigit() }
+    val hasSpecial = password.any { !it.isLetterOrDigit() }
+    val hasLength = password.length >= 8
+
+    val strength = listOf(hasUppercase, hasNumber, hasSpecial, hasLength).count { it } / 4f
+    val strengthColor = when {
+        strength <= 0.25f -> Color(0xFFFF5252)
+        strength <= 0.75f -> Color(0xFFFFA726)
+        else -> Color(0xFF26A69A)
+    }
+
+    fun validateAndRegister() {
+        if (nombres.isBlank() || apellidos.isBlank() || selectedLevel.isBlank()) {
+            errorMessage = "Por favor, completa todos tus datos personales"
+            return
+        }
+        val allowedDomains = listOf("@gmail.com", "@outlook.com", "@hotmail.com")
+        if (!allowedDomains.any { email.trim().endsWith(it, ignoreCase = true) }) {
+            errorMessage = "Solo se permite registro con Gmail, Outlook o Hotmail"
+            return
+        }
+        if (strength < 1f) {
+            errorMessage = "La contraseña no cumple los requisitos mínimos"
+            return
+        }
+        errorMessage = ""
+        onRegisterSuccess()
     }
 
     Column(
         modifier = modifier
             .fillMaxSize()
-            .padding(32.dp),
-        verticalArrangement = Arrangement.Center,
+            .padding(32.dp)
+            .background(Color(0xFFF8F9FA))
+            .verticalScroll(scrollState),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Text(
-            text = "TaskFlow",
-            style = MaterialTheme.typography.displaySmall,
-            fontWeight = FontWeight.ExtraBold,
-            color = Color(0xFF5C6BC0)
-        )
-        Text(
-            text = "Sincronizado con Blackboard",
-            style = MaterialTheme.typography.bodyMedium,
-            color = Color.Gray
-        )
-
-        Spacer(modifier = Modifier.height(48.dp))
+        Spacer(modifier = Modifier.height(16.dp))
+        Text(text = "Crear Cuenta", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = Color(0xFF3949AB))
+        Spacer(modifier = Modifier.height(24.dp))
 
         OutlinedTextField(
-            value = username,
-            onValueChange = {
-                username = it
-                usernameError = false
-            },
-            label = { Text("Correo Institucional") },
-            isError = usernameError,
-            modifier = Modifier.fillMaxWidth(),
+            value = nombres,
+            onValueChange = { nombres = it; errorMessage = "" },
+            label = { Text("Nombres completos") },
             singleLine = true,
-            shape = RoundedCornerShape(12.dp)
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(16.dp)
         )
+        Spacer(modifier = Modifier.height(16.dp))
 
+        OutlinedTextField(
+            value = apellidos,
+            onValueChange = { apellidos = it; errorMessage = "" },
+            label = { Text("Apellidos completos") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(16.dp)
+        )
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Selector Desplegable de Academia
+        Box(modifier = Modifier.fillMaxWidth()) {
+            OutlinedTextField(
+                value = selectedLevel,
+                onValueChange = {},
+                readOnly = true,
+                label = { Text("Selecciona tu Ciclo de Preparación") },
+                trailingIcon = {
+                    Icon(
+                        painter = painterResource(id = R.drawable.ic_arrow_drop_down),
+                        contentDescription = "Desplegar",
+                        modifier = Modifier.clickable { expandedLevel = !expandedLevel }
+                    )
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { expandedLevel = true },
+                shape = RoundedCornerShape(16.dp)
+            )
+            DropdownMenu(
+                expanded = expandedLevel,
+                onDismissRequest = { expandedLevel = false },
+                modifier = Modifier.fillMaxWidth(0.85f)
+            ) {
+                nivelesAcademia.forEach { nivel ->
+                    DropdownMenuItem(
+                        text = { Text(nivel) },
+                        onClick = {
+                            selectedLevel = nivel
+                            expandedLevel = false
+                            errorMessage = ""
+                        }
+                    )
+                }
+            }
+        }
+        Spacer(modifier = Modifier.height(16.dp))
+
+        OutlinedTextField(
+            value = email,
+            onValueChange = { email = it; errorMessage = "" },
+            label = { Text("Correo Electrónico") },
+            placeholder = { Text("ejemplo@gmail.com") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(16.dp)
+        )
         Spacer(modifier = Modifier.height(16.dp))
 
         OutlinedTextField(
             value = password,
-            onValueChange = {
-                password = it
-                passwordError = false
-            },
-            label = { Text("Contraseña") },
-            isError = passwordError,
+            onValueChange = { password = it; errorMessage = "" },
+            label = { Text("Crea una Contraseña") },
             visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
             trailingIcon = {
-                val symbol = if (passwordVisible) "🙈" else "👁️"
                 Text(
-                    text = symbol,
-                    modifier = Modifier
-                        .clickable { passwordVisible = !passwordVisible }
-                        .padding(8.dp)
+                    text = if (passwordVisible) "🙈" else "👁️",
+                    modifier = Modifier.clickable { passwordVisible = !passwordVisible }.padding(8.dp)
                 )
             },
-            modifier = Modifier.fillMaxWidth(),
             singleLine = true,
-            shape = RoundedCornerShape(12.dp)
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(16.dp)
         )
+        Spacer(modifier = Modifier.height(8.dp))
 
-        // Mensaje de error dinámico
+        LinearProgressIndicator(
+            progress = { strength },
+            modifier = Modifier.fillMaxWidth().height(6.dp),
+            color = strengthColor,
+            trackColor = Color(0xFFE0E0E0),
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Text(text = "Requisitos de seguridad:", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+            Text(text = "${if (hasLength) "✅" else "❌"} Mínimo 8 caracteres", style = MaterialTheme.typography.bodySmall)
+            Text(text = "${if (hasUppercase) "✅" else "❌"} Al menos una mayúscula", style = MaterialTheme.typography.bodySmall)
+            Text(text = "${if (hasNumber) "✅" else "❌"} Al menos un número", style = MaterialTheme.typography.bodySmall)
+            Text(text = "${if (hasSpecial) "✅" else "❌"} Un carácter especial (!@#\$%)", style = MaterialTheme.typography.bodySmall)
+        }
+
         if (errorMessage.isNotEmpty()) {
             Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = errorMessage,
-                color = MaterialTheme.colorScheme.error,
-                style = MaterialTheme.typography.bodySmall
-            )
+            Text(text = errorMessage, color = Color(0xFFFF5252), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
         }
 
-        Spacer(modifier = Modifier.height(32.dp))
+        Spacer(modifier = Modifier.height(24.dp))
 
         Button(
-            onClick = { validateAndLogin() },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(56.dp),
+            onClick = { validateAndRegister() },
+            modifier = Modifier.fillMaxWidth().height(56.dp),
             shape = RoundedCornerShape(16.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2C3E50))
+            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3949AB))
         ) {
-            Text(
-                text = "Iniciar Sesión",
-                fontWeight = FontWeight.Bold,
-                fontSize = MaterialTheme.typography.titleMedium.fontSize
-            )
+            Text("Registrarse", fontWeight = FontWeight.Bold, fontSize = 16.sp)
         }
+        Spacer(modifier = Modifier.height(16.dp))
+        Text(text = "Volver al Login", color = Color.Gray, modifier = Modifier.clickable { onBackToLogin() }.padding(16.dp))
+    }
+}
+
+@Composable
+fun ForgotPasswordScreen(modifier: Modifier = Modifier, onBackToLogin: () -> Unit, onSendResetLink: (String) -> Unit) {
+    var email by remember { mutableStateOf("") }
+    var errorMessage by remember { mutableStateOf("") }
+
+    fun validateAndSend() {
+        val allowedDomains = listOf("@gmail.com", "@outlook.com", "@hotmail.com")
+        if (!allowedDomains.any { email.trim().endsWith(it, ignoreCase = true) }) {
+            errorMessage = "Ingresa un correo válido (Gmail, Outlook o Hotmail)"
+            return
+        }
+        errorMessage = ""
+        onSendResetLink(email)
+    }
+
+    Column(modifier = modifier.fillMaxSize().padding(32.dp).background(Color(0xFFF8F9FA)), horizontalAlignment = Alignment.CenterHorizontally) {
+        Spacer(modifier = Modifier.height(32.dp))
+        Text(text = "Recuperar Acceso", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = Color(0xFF3949AB))
+        Spacer(modifier = Modifier.height(16.dp))
+        Text(text = "Ingresa tu correo para enviarte un enlace de recuperación seguro.", style = MaterialTheme.typography.bodyMedium, color = Color.Gray, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+        Spacer(modifier = Modifier.height(32.dp))
+
+        OutlinedTextField(
+            value = email,
+            onValueChange = { email = it; errorMessage = "" },
+            label = { Text("Correo Electrónico") },
+            placeholder = { Text("ejemplo@gmail.com") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(16.dp)
+        )
+
+        if (errorMessage.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(text = errorMessage, color = Color(0xFFFF5252), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+        }
+
+        Spacer(modifier = Modifier.weight(1f))
+
+        Button(
+            onClick = { validateAndSend() },
+            modifier = Modifier.fillMaxWidth().height(56.dp),
+            shape = RoundedCornerShape(16.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF26A69A))
+        ) {
+            Text("Enviar Enlace", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+        }
+        Spacer(modifier = Modifier.height(16.dp))
+        Text(text = "Volver al Login", color = Color.Gray, modifier = Modifier.clickable { onBackToLogin() }.padding(16.dp))
     }
 }
 
@@ -279,7 +523,7 @@ fun LoginScreen(modifier: Modifier = Modifier, onLoginSuccess: () -> Unit) {
 // BLOQUE 3: Pantalla Principal (Dashboard)
 // ==========================================
 @Composable
-fun DashboardScreen(modifier: Modifier = Modifier, tasks: List<BlackboardTask>, isLoading: Boolean, onTaskClick: (String) -> Unit) {
+fun DashboardScreen(modifier: Modifier = Modifier, tasks: List<AcademicTask>, isLoading: Boolean, onTaskClick: (String) -> Unit) {
     val scrollState = rememberScrollState()
     val tareasPendientes = tasks.filter { it.status == "Pendiente" }
 
@@ -292,7 +536,7 @@ fun DashboardScreen(modifier: Modifier = Modifier, tasks: List<BlackboardTask>, 
         Spacer(modifier = Modifier.height(24.dp))
         // Saludo
         Text(text = "Hola, Mateo 👋", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold, color = Color(0xFF2C3E50))
-        Text(text = "Sincronizado con Blackboard UCV", style = MaterialTheme.typography.bodyMedium, color = Color.Gray)
+        Text(text = "Modo Offline Activo - Sincronización Local", style = MaterialTheme.typography.bodyMedium, color = Color.Gray)
         Spacer(modifier = Modifier.height(24.dp))
 
         SummaryCard(title = "Entregas Pendientes", count = tareasPendientes.size.toString(), color = Color(0xFFFF6B6B))
@@ -321,7 +565,7 @@ fun DashboardScreen(modifier: Modifier = Modifier, tasks: List<BlackboardTask>, 
             // LISTA DE TAREAS
             tareasPendientes.forEach { task ->
                 TaskCard(
-                    courseName = task.courseName,
+                    courseName = task.category, // Actualizado: Pasa la categoría en lugar del curso universitario
                     taskDescription = task.taskDescription,
                     dueDate = task.dueDate,
                     isOverdue = task.isOverdue,
@@ -340,7 +584,7 @@ fun DashboardScreen(modifier: Modifier = Modifier, tasks: List<BlackboardTask>, 
 @Composable
 fun TaskDetailScreen(
     modifier: Modifier = Modifier,
-    task: BlackboardTask,
+    task: AcademicTask, // Actualizado al nuevo modelo
     onBackClick: () -> Unit,
     onSubmitTask: () -> Unit,
     showError: (String) -> Unit
@@ -386,7 +630,7 @@ fun TaskDetailScreen(
         Spacer(modifier = Modifier.height(4.dp))
 
         Text(
-            text = task.courseName,
+            text = task.category, // Actualizado a la nueva propiedad
             style = MaterialTheme.typography.bodyMedium,
             color = Color(0xFF5C6BC0),
             fontWeight = FontWeight.Bold
@@ -439,7 +683,7 @@ fun TaskDetailScreen(
                     Text(text = "📄", style = MaterialTheme.typography.titleMedium)
                     Spacer(modifier = Modifier.width(12.dp))
                     Text(
-                        text = "Guia_de_Actividad.pdf",
+                        text = "Material_de_Estudio.pdf",
                         style = MaterialTheme.typography.bodySmall,
                         color = Color(0xFF34495E),
                         fontWeight = FontWeight.Medium
