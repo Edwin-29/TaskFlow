@@ -60,6 +60,8 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.ui.res.painterResource
 import com.google.firebase.auth.FirebaseAuth
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.size
 
 // ==========================================
 // MOCK API: Modelo de Datos de AcademicTask
@@ -133,8 +135,20 @@ class MainActivity : ComponentActivity() {
                                 modifier = Modifier.padding(innerPadding),
                                 onBackToLogin = { currentScreen = "login" },
                                 onSendResetLink = { email ->
-                                    coroutineScope.launch { snackbarHostState.showSnackbar("Enlace enviado a $email") }
-                                    currentScreen = "login"
+                                    // Llamada real a Firebase para enviar el correo de recuperación
+                                    FirebaseAuth.getInstance().sendPasswordResetEmail(email)
+                                        .addOnCompleteListener { task ->
+                                            coroutineScope.launch {
+                                                if (task.isSuccessful) {
+                                                    snackbarHostState.showSnackbar("Enlace enviado a $email. Revisa tu bandeja.")
+                                                    currentScreen = "login"
+                                                } else {
+                                                    // Muestra error si el correo no está registrado o hay fallo de red
+                                                    val errorMsg = task.exception?.localizedMessage ?: "Error al enviar el enlace"
+                                                    snackbarHostState.showSnackbar(errorMsg)
+                                                }
+                                            }
+                                        }
                                 }
                             )
                         }
@@ -216,7 +230,17 @@ fun LoginScreen(
         modifier = modifier.fillMaxSize().padding(32.dp).background(Color(0xFFF8F9FA)),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally
-    ) {
+    ) { // <-- LA LLAVE DE APERTURA DEBE IR AQUÍ
+
+        // La imagen ahora está correctamente dentro del Column
+        Image(
+            painter = painterResource(id = R.drawable.logo_taskflow),
+            contentDescription = "Logo de TaskFlow",
+            modifier = Modifier
+                .size(120.dp)
+                .padding(bottom = 8.dp)
+        )
+
         Text(text = "TaskFlow", style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.ExtraBold, color = Color(0xFF3949AB))
         Text(text = "Tu Organizador Preuniversitario", style = MaterialTheme.typography.bodyMedium, color = Color.Gray)
         Spacer(modifier = Modifier.height(48.dp))
