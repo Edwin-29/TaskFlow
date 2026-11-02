@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "936263219692",
+    "project_id": "taskflow-ad2ce",
+    "storage_bucket": "taskflow-ad2ce.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:936263219692:android:71295c17fc8450952ca8c9",
+        "android_client_info": {
+          "package_name": "com.equipo2.taskflow"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAqWktrHbhKCqqVQH8BqR3I4l-H0DUvsR8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -59,6 +59,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.ui.res.painterResource
+import com.google.firebase.auth.FirebaseAuth
 
 // ==========================================
 // MOCK API: Modelo de Datos de AcademicTask
@@ -194,20 +195,21 @@ fun LoginScreen(
     var errorMessage by remember { mutableStateOf("") }
 
     fun validateAndLogin() {
-        val allowedDomains = listOf("@gmail.com", "@outlook.com", "@hotmail.com")
-        val isValidDomain = allowedDomains.any { email.trim().endsWith(it, ignoreCase = true) }
+        if (email.isBlank() || password.isBlank()) {
+            errorMessage = "Ingresa tu correo y contraseña"
+            return
+        }
 
-        if (!isValidDomain) {
-            errorMessage = "Solo permitimos correos de Gmail, Outlook o Hotmail"
-            return
-        }
-        if (password.length < 8) {
-            errorMessage = "La contraseña requiere mínimo 8 caracteres"
-            return
-        }
-        // Nota: La conexión real a Firebase se implementará aquí para rechazar correos no registrados
-        errorMessage = ""
-        onLoginSuccess()
+        // Validación real de credenciales en Firebase
+        FirebaseAuth.getInstance().signInWithEmailAndPassword(email.trim(), password)
+            .addOnCompleteListener { task ->
+                if (task.isSuccessful) {
+                    errorMessage = ""
+                    onLoginSuccess()
+                } else {
+                    errorMessage = "Credenciales incorrectas o cuenta no registrada"
+                }
+            }
     }
 
     Column(
@@ -329,8 +331,17 @@ fun RegisterScreen(modifier: Modifier = Modifier, onBackToLogin: () -> Unit, onR
             errorMessage = "La contraseña no cumple los requisitos mínimos"
             return
         }
-        errorMessage = ""
-        onRegisterSuccess()
+
+        // Creación real de la cuenta en Firebase
+        FirebaseAuth.getInstance().createUserWithEmailAndPassword(email.trim(), password)
+            .addOnCompleteListener { task ->
+                if (task.isSuccessful) {
+                    errorMessage = ""
+                    onRegisterSuccess()
+                } else {
+                    errorMessage = task.exception?.localizedMessage ?: "Error al crear la cuenta"
+                }
+            }
     }
 
     Column(
@@ -535,7 +546,7 @@ fun DashboardScreen(modifier: Modifier = Modifier, tasks: List<AcademicTask>, is
     ) {
         Spacer(modifier = Modifier.height(24.dp))
         // Saludo
-        Text(text = "Hola, Mateo 👋", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold, color = Color(0xFF2C3E50))
+        Text(text = "Hola,👋", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold, color = Color(0xFF2C3E50))
         Text(text = "Modo Offline Activo - Sincronización Local", style = MaterialTheme.typography.bodyMedium, color = Color.Gray)
         Spacer(modifier = Modifier.height(24.dp))
 
